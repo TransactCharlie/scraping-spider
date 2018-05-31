@@ -1,11 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"golang.org/x/net/html"
 	"net/url"
 )
 
+type page struct {
+	url *url.URL
+	title string
+	links []*url.URL
+}
 
 func getHref(t html.Token) (ok bool, href string) {
 	// Iterate over all of the Token's attributes until we find an "href"
@@ -20,28 +24,38 @@ func getHref(t html.Token) (ok bool, href string) {
 	return
 }
 
-func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL) {
+func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL, finished chan<- *page) {
 
-	fmt.Println("Fetching: ", link)
+	page := &page{url: link}
+	defer func() { finished <- page }()
 
 	// Fetch the link
 	resp, err := client.Get(link)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
+
 	defer resp.Body.Close()
 	z := html.NewTokenizer(resp.Body)
 	for {
 		tt := z.Next()
-
 		switch {
+
 		case tt == html.ErrorToken:
 			// End of the document, we're done
 			return
+
 		case tt == html.StartTagToken:
 			t := z.Token()
 
+			// Title
+			isTitle := t.Data == "title"
+			if isTitle {
+				z.Next()
+				title := z.Token()
+				page.title = title.String()
+				continue
+			}
 			// Check if the token is an <a> tag
 			isAnchor := t.Data == "a"
 			if !isAnchor {
@@ -62,8 +76,14 @@ func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL) {
 
 			// Handle relative vs absolute links
 			absUrl := link.ResolveReference(candidateUrl)
-			out <- absUrl
 
+			// Strip any fragments or query strings
+			absUrl.RawQuery = ""
+			absUrl.Fragment = ""
+			page.links = append(page.links, absUrl)
+
+			// Emit the link to be handled
+			out <- absUrl
 		}
 	}
 }

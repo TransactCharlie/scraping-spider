@@ -1,64 +1,78 @@
 package main
 
 import (
-	"sync"
-	"net/url"
+	"flag"
 	"fmt"
+	"github.com/transactcharlie/scraping-spider/filter"
+	"github.com/transactcharlie/scraping-spider/pool"
+	"net/url"
 )
 
-
-type token = struct{}
-
 var (
-	rawLinks       = make(chan *url.URL)
-	filteredLinks  = make(chan *url.URL, 10000)
-	connectionPool = make(chan struct{}, 50)
-	workerGroup    = sync.WaitGroup{}
-	stopObserver   = make(chan token)
-	client         = newClient("monzo.com")
+	cmdURL = flag.String("U", "https://monzo.com", "Initial URL")
+	cmdPoolSize = flag.Int("C", 25,"Max number of concurrent fetches")
 )
 
 func main() {
+	flag.Parse()
 
-	initialURL, _ := url.Parse("https://monzo.com/")
+	var (
+		filterCandidates = make(chan *url.URL)
+		filteredLinks    = make(chan *url.URL, 10)
+		discardedLinks   = make(chan *url.URL, 10)
+		initialURL, _    = url.Parse(*cmdURL)
+		linkFilter       = filter.NewFilter(initialURL, filterCandidates, discardedLinks, filteredLinks)
+		httpClient       = newClient(initialURL)
+		connectionPool   = pool.NewPool(*cmdPoolSize)
+		results          = []*page{}
+	)
 
-	// Filter (makes sure we don't visit the same link more than once)
-	StartFilter(initialURL, rawLinks, filteredLinks)
-
-	// Observer
-	StartObserver(stopObserver, rawLinks, filteredLinks)
-
-	// Fill Worker Pool Tokens
-	for _, t := range(make([]token, 50)) {
-		connectionPool <- t
-	}
+	// Filter
+	linkFilter.Run()
 
 	// Initial Fetch
 	filteredLinks <- initialURL
 
+	candidateURLS := make(chan *url.URL, 1)
+	fetchResults := make(chan *page, 1)
+	fetchers := 0
+	urlsToProcess := 1
 	for {
 		select {
+
+		// New URL to fetch and parse
 		case l := <-filteredLinks:
-			workerGroup.Add(1)
+			fetchers++
+			urlsToProcess--
 			go func(link *url.URL) {
-				<-connectionPool
-				fetchLinks(client, link, rawLinks)
-				connectionPool <- token{}
-				workerGroup.Done()
+				connectionPool.Claim()
+				fetchLinks(httpClient, link, candidateURLS, fetchResults)
+				connectionPool.Release()
 			}(l)
-		default:
-			// We might have workers in flight even if we have no current work to do
-			workerGroup.Wait()
-			// If all workers have finished and there is nothing now in filteredLinks we are done
-			if len(filteredLinks) == 0 {
-				fmt.Println("oooo")
-				goto END
+
+		// Fetcher has finished and returned a page
+		case p := <-fetchResults:
+			fetchers--
+			results = append(results, p)
+			if fetchers == 0 && urlsToProcess == 0 {
+				goto EXIT
 			}
+
+		// Filter discarded a candidate URL
+		case <-discardedLinks:
+			urlsToProcess--
+			if urlsToProcess == 0 && fetchers == 0 {
+				goto EXIT
+			}
+
+		// Fetcher emitted a candidate URL
+		case r := <-candidateURLS:
+			urlsToProcess++
+			filterCandidates <- r
+
 		}
 	}
-	END:
-		fmt.Println("closing Down")
-		stopObserver <- token{}
-
-
+EXIT:
+	linkFilter.Stop()
+	fmt.Println(generateGraph(results))
 }
