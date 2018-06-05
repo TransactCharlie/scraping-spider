@@ -9,15 +9,15 @@ import (
 )
 
 var (
-	cmdURL = flag.String("U", "https://monzo.com", "Initial URL")
-	cmdPoolSize = flag.Int("C", 25,"Max number of concurrent fetches")
+	cmdURL      = flag.String("U", "https://monzo.com", "Initial URL")
+	cmdPoolSize = flag.Int("C", 25, "Max number of concurrent fetches")
 )
 
 func main() {
 	flag.Parse()
 
 	var (
-		filterCandidates = make(chan *url.URL)
+		filterCandidates = make(chan *url.URL, 1)
 		filteredLinks    = make(chan *url.URL, 10)
 		discardedLinks   = make(chan *url.URL, 10)
 		initialURL, _    = url.Parse(*cmdURL)
@@ -25,18 +25,18 @@ func main() {
 		httpClient       = newClient(initialURL)
 		connectionPool   = pool.NewPool(*cmdPoolSize)
 		results          = []*page{}
+		candidateURLS    = make(chan *url.URL, 1)
+		fetchResults     = make(chan *page, 1)
+		fetchers         = 0
+		urlsToProcess    = 0
 	)
 
 	// Filter
 	linkFilter.Run()
 
 	// Initial Fetch
-	filteredLinks <- initialURL
+	candidateURLS <- initialURL
 
-	candidateURLS := make(chan *url.URL, 1)
-	fetchResults := make(chan *page, 1)
-	fetchers := 0
-	urlsToProcess := 1
 	for {
 		select {
 

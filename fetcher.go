@@ -6,7 +6,7 @@ import (
 )
 
 type page struct {
-	url *url.URL
+	url   *url.URL
 	title string
 	links []*url.URL
 }
