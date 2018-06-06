@@ -6,6 +6,8 @@ import (
 	"github.com/transactcharlie/scraping-spider/filter"
 	"github.com/transactcharlie/scraping-spider/pool"
 	"net/url"
+	"log"
+	"os"
 )
 
 var (
@@ -14,6 +16,7 @@ var (
 )
 
 func main() {
+	log := log.New(os.Stderr, ".... ", 0)
 	flag.Parse()
 
 	var (
@@ -37,11 +40,13 @@ func main() {
 	// Initial Fetch
 	candidateURLS <- initialURL
 
+	log.Println("Starting Event Loop")
 	for {
 		select {
 
 		// New URL to fetch and parse
 		case l := <-filteredLinks:
+			log.Print("+", l)
 			fetchers++
 			urlsToProcess--
 			go func(link *url.URL) {
@@ -52,6 +57,7 @@ func main() {
 
 		// Fetcher has finished and returned a page
 		case p := <-fetchResults:
+			log.Print(".")
 			fetchers--
 			results = append(results, p)
 			if fetchers == 0 && urlsToProcess == 0 {
@@ -59,7 +65,8 @@ func main() {
 			}
 
 		// Filter discarded a candidate URL
-		case <-discardedLinks:
+		case d := <-discardedLinks:
+			log.Print("D: ", d)
 			urlsToProcess--
 			if urlsToProcess == 0 && fetchers == 0 {
 				goto EXIT
@@ -67,12 +74,15 @@ func main() {
 
 		// Fetcher emitted a candidate URL
 		case r := <-candidateURLS:
+			log.Print("R")
 			urlsToProcess++
 			filterCandidates <- r
 
 		}
 	}
 EXIT:
+	log.Println()
+	log.Println("Finished")
 	linkFilter.Stop()
 	fmt.Println(generateGraph(results))
 }

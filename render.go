@@ -19,7 +19,7 @@ func generateGraph(results []*page) string {
 	_ = graph.AddSubGraph("Sitemap", EXDOMAIN, nil)
 
 	nodeCache := map[string]struct{}{}
-	extraNodeCache := map[string]struct{}{}
+	// extraNodeCache := map[string]struct{}{}
 	edgeCache := map[string]struct{}{}
 
 	// We will do this in two passes to populate the nodes we correctly found
@@ -27,6 +27,7 @@ func generateGraph(results []*page) string {
 		graph.AddNode(INDOMAIN, escape(p.url.String()), map[string]string{"label": escape(p.url.Path)})
 		nodeCache[p.url.String()] = struct{}{}
 	}
+	graph.AddNode(EXDOMAIN, "OutsideContextProblem", nil)
 
 	// 2nd Pass for edges -- any edges that point to nodes not in the cache will
 	// needs nodes created for them
@@ -40,13 +41,16 @@ func generateGraph(results []*page) string {
 				}
 			} else {
 				// TO make it *possible* to render this we'll restrict the link to just the root domain
+				/*
 				hostName := l.Hostname()
 				if _, ok := extraNodeCache[hostName]; !ok {
 					graph.AddNode(EXDOMAIN, escape(hostName), nil)
+					extraNodeCache[hostName] = struct{}{}
 				}
-				edgeName := p.url.String() + "-" + escape(hostName)
+				*/
+				edgeName := p.url.String() + "-exdomain"
 				if _, ok := edgeCache[edgeName]; !ok {
-					graph.AddEdge(escape(p.url.String()), escape(hostName), true, nil)
+					graph.AddEdge(escape(p.url.String()), "OutsideContextProblem", true, nil)
 					edgeCache[edgeName] = struct{}{}
 					}
 
