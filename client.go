@@ -16,6 +16,7 @@ func (c *Client) Get(url *url.URL) (resp *http.Response, err error) {
 	return c.httpClient.Get(url.String())
 }
 
+// Checks for redirects and won't follow them off domain.
 func (c *Client) handleRedirects(req *http.Request, via []*http.Request) error {
 
 	if req.URL.Hostname() != c.baseHostName {

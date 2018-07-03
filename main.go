@@ -16,7 +16,7 @@ var (
 )
 
 func main() {
-	log := log.New(os.Stderr, ".... ", 0)
+	log := log.New(os.Stderr, "", 0)
 	flag.Parse()
 
 	var (

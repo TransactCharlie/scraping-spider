@@ -40,14 +40,6 @@ func generateGraph(results []*page) string {
 					edgeCache[edgeName] = struct{}{}
 				}
 			} else {
-				// TO make it *possible* to render this we'll restrict the link to just the root domain
-				/*
-					hostName := l.Hostname()
-					if _, ok := extraNodeCache[hostName]; !ok {
-						graph.AddNode(EXDOMAIN, escape(hostName), nil)
-						extraNodeCache[hostName] = struct{}{}
-					}
-				*/
 				edgeName := p.url.String() + "-exdomain"
 				if _, ok := edgeCache[edgeName]; !ok {
 					graph.AddEdge(escape(p.url.String()), "OutsideContextProblem", true, nil)
