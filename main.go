@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/transactcharlie/scraping-spider/filter"
 	"github.com/transactcharlie/scraping-spider/pool"
-	"net/url"
 	"log"
+	"net/url"
 	"os"
 )
 
@@ -20,18 +20,25 @@ func main() {
 	flag.Parse()
 
 	var (
-		filterCandidates = make(chan *url.URL, 1)
-		filteredLinks    = make(chan *url.URL, 10)
-		discardedLinks   = make(chan *url.URL, 10)
-		initialURL, _    = url.Parse(*cmdURL)
-		linkFilter       = filter.NewFilter(initialURL, filterCandidates, discardedLinks, filteredLinks)
-		httpClient       = newClient(initialURL)
-		connectionPool   = pool.NewPool(*cmdPoolSize)
-		results          = []*page{}
-		candidateURLS    = make(chan *url.URL, 1)
-		fetchResults     = make(chan *page, 1)
-		fetchers         = 0
-		urlsToProcess    = 0
+		initialURL, _  = url.Parse(*cmdURL)
+		httpClient     = newClient(initialURL)
+		connectionPool = pool.NewPool(*cmdPoolSize)
+		results        = []*page{}
+
+		// Communication Channels
+		filterCandidates = make(chan *url.URL)
+		filteredLinks    = make(chan *url.URL)
+		discardedLinks   = make(chan *url.URL)
+		candidateURLS    = make(chan *url.URL, 1) // We buffer this so we can inject the start URL
+		fetchResults     = make(chan *page)
+
+		// linkFilter is in charge of filtering out potential bad links or ones we've visited before
+		linkFilter = filter.NewFilter(initialURL, filterCandidates,
+			discardedLinks, filteredLinks)
+
+		// Counters to keep track of in-flight workers and urls
+		fetchers      = 0
+		urlsToProcess = 0
 	)
 
 	// Filter
@@ -46,7 +53,7 @@ func main() {
 
 		// New URL to fetch and parse
 		case l := <-filteredLinks:
-			log.Print("+", l)
+			fmt.Fprintf(os.Stderr, ".")
 			fetchers++
 			urlsToProcess--
 			go func(link *url.URL) {
@@ -57,7 +64,7 @@ func main() {
 
 		// Fetcher has finished and returned a page
 		case p := <-fetchResults:
-			log.Print(".")
+			fmt.Fprintf(os.Stderr, "P")
 			fetchers--
 			results = append(results, p)
 			if fetchers == 0 && urlsToProcess == 0 {
@@ -65,8 +72,8 @@ func main() {
 			}
 
 		// Filter discarded a candidate URL
-		case d := <-discardedLinks:
-			log.Print("D: ", d)
+		case _ = <-discardedLinks:
+			fmt.Fprintf(os.Stderr, "D")
 			urlsToProcess--
 			if urlsToProcess == 0 && fetchers == 0 {
 				goto EXIT
@@ -74,10 +81,13 @@ func main() {
 
 		// Fetcher emitted a candidate URL
 		case r := <-candidateURLS:
-			log.Print("R")
+			fmt.Fprintf(os.Stderr, "+")
 			urlsToProcess++
-			filterCandidates <- r
-
+			// We need to run this in a goroutine so this loop is *always*
+			// available to consume new events.
+			go func() {
+				filterCandidates <- r
+			}()
 		}
 	}
 EXIT:

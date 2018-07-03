@@ -27,6 +27,7 @@ func getHref(t html.Token) (ok bool, href string) {
 func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL, finished chan<- *page) {
 
 	page := &page{url: link}
+	// Defer a write for the final result so that it always happens
 	defer func() { finished <- page }()
 
 	// Fetch the link
