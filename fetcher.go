@@ -3,6 +3,8 @@ package main
 import (
 	"golang.org/x/net/html"
 	"net/url"
+	"github.com/transactcharlie/scraping-spider/httpclient"
+	"strings"
 )
 
 type page struct {
@@ -24,7 +26,7 @@ func getHref(t html.Token) (ok bool, href string) {
 	return
 }
 
-func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL, finished chan<- *page) {
+func fetchLinks(client *httpclient.Client, link *url.URL, out chan<- *url.URL, finished chan<- *page) {
 
 	page := &page{url: link}
 	// Defer a write for the final result so that it always happens
@@ -81,6 +83,10 @@ func fetchLinks(client *Client, link *url.URL, out chan<- *url.URL, finished cha
 			// Strip any fragments or query strings
 			absUrl.RawQuery = ""
 			absUrl.Fragment = ""
+
+			// Remove any redundant trailing '/' '///' etc
+			absUrl.Path = strings.TrimRight(absUrl.Path, "/")
+
 			page.links = append(page.links, absUrl)
 
 			// Emit the link to be handled

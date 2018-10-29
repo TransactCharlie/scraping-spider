@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"github.com/transactcharlie/scraping-spider/filter"
 	"github.com/transactcharlie/scraping-spider/pool"
-	"log"
+	"github.com/transactcharlie/scraping-spider/httpclient"
+	logging "log"
 	"net/url"
 	"os"
 )
@@ -16,12 +17,12 @@ var (
 )
 
 func main() {
-	log := log.New(os.Stderr, "", 0)
+	log := logging.New(os.Stderr, "", 0)
 	flag.Parse()
 
 	var (
 		initialURL, _  = url.Parse(*cmdURL)
-		httpClient     = newClient(initialURL)
+		httpClient     = httpclient.NewClient(initialURL)
 		connectionPool = pool.NewPool(*cmdPoolSize)
 		results        = []*page{}
 
