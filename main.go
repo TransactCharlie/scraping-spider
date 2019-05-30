@@ -9,12 +9,29 @@ import (
 	logging "log"
 	"net/url"
 	"os"
+	"time"
 )
 
 var (
 	cmdURL      = flag.String("U", "https://monzo.com", "Initial URL")
 	cmdPoolSize = flag.Int("C", 25, "Max number of concurrent fetches")
+
+	// Counters to keep track of in-flight workers and urls
+	fetchers      = 0
+	urlsToProcess = 0
+
+	// Counters for statistics
+	fetchedPages = 0
+	linksSeen = 0
+	linksDiscarded = 0
+
+	// Debug report ticker
+	ticker = time.Tick(time.Millisecond * 100)
 )
+
+func debugReport() {
+	fmt.Fprintf(os.Stderr, "\r Fetched:%d  Discarded:%d  LinksSeen:%d", fetchedPages, linksDiscarded, linksSeen)
+}
 
 func main() {
 	log := logging.New(os.Stderr, "", 0)
@@ -27,7 +44,7 @@ func main() {
 		results        = []*page{}
 
 		// Communication Channels
-		filterCandidates = make(chan *url.URL)
+		filterCandidates = make(chan *url.URL, 4 * *cmdPoolSize) // buffered to 4 times the number of in flight workers
 		filteredLinks    = make(chan *url.URL)
 		discardedLinks   = make(chan *url.URL)
 		candidateURLS    = make(chan *url.URL, 1) // We buffer this so we can inject the start URL
@@ -37,9 +54,7 @@ func main() {
 		linkFilter = filter.NewFilter(initialURL, filterCandidates,
 			discardedLinks, filteredLinks)
 
-		// Counters to keep track of in-flight workers and urls
-		fetchers      = 0
-		urlsToProcess = 0
+
 	)
 
 	// Filter
@@ -48,25 +63,25 @@ func main() {
 	// Initial Fetch
 	candidateURLS <- initialURL
 
+
 	log.Println("Starting Event Loop")
 	for {
 		select {
 
 		// New URL to fetch and parse
 		case l := <-filteredLinks:
-			fmt.Fprintf(os.Stderr, ".")
 			fetchers++
 			urlsToProcess--
 			go func(link *url.URL) {
 				connectionPool.Claim()
+				defer connectionPool.Release()
 				fetchLinks(httpClient, link, candidateURLS, fetchResults)
-				connectionPool.Release()
 			}(l)
 
 		// Fetcher has finished and returned a page
 		case p := <-fetchResults:
-			fmt.Fprintf(os.Stderr, "P")
 			fetchers--
+			fetchedPages++
 			results = append(results, p)
 			if fetchers == 0 && urlsToProcess == 0 {
 				goto EXIT
@@ -74,24 +89,41 @@ func main() {
 
 		// Filter discarded a candidate URL
 		case _ = <-discardedLinks:
-			fmt.Fprintf(os.Stderr, "D")
+			// fmt.Fprintf(os.Stderr, "D")
 			urlsToProcess--
+			linksDiscarded++
 			if urlsToProcess == 0 && fetchers == 0 {
 				goto EXIT
 			}
 
 		// Fetcher emitted a candidate URL
 		case r := <-candidateURLS:
-			fmt.Fprintf(os.Stderr, "+")
 			urlsToProcess++
-			// We need to run this in a goroutine so this loop is *always*
-			// available to consume new events.
-			go func() {
-				filterCandidates <- r
-			}()
+			linksSeen++
+			// We need to write to the filterCandidates channel -- this has a buffer set to the size of max
+			// inflight concurrent fetches. However a fetch can return many links as candidates
+			// to get round this we can schedule a goroutine instead if we can't write to the channel.
+			// However this does end up spawning a lot of goroutines
+			// Eventually, either way we'd end up running out of memory and if we had some exponential
+			// explosion of links we'd eventually have to either just fail and run out of memory or drop
+			// messages.
+			select {
+				case filterCandidates <- r:
+				default:
+					// we weren't able to write to filterCandidates.
+					// lets schedule a function to do it when it can...
+					go func(candidate *url.URL) {
+						filterCandidates <- candidate
+					}(r)
+			}
+
+		// Debug Report ticker
+		case <- ticker:
+			debugReport()
 		}
 	}
 EXIT:
+	debugReport()
 	log.Println()
 	log.Println("Finished")
 	linkFilter.Stop()

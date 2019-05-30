@@ -31,10 +31,9 @@ func NewClient(initialURL *url.URL) *Client {
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
-			KeepAlive: 10 * time.Second,
-			DualStack: true,
+			KeepAlive: 500 * time.Millisecond,
 		}).DialContext,
-		MaxIdleConns:          100,
+		MaxIdleConns:          0,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
