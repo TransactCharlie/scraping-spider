@@ -40,7 +40,7 @@ func NewClient(initialURL *url.URL) *Client {
 	}
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   time.Duration(time.Second * 10),
+		Timeout:   time.Duration(time.Second * 60),
 	}
 	c := &Client{
 		httpClient:   client,
