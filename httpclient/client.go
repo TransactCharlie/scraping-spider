@@ -40,6 +40,7 @@ func NewClient(initialURL *url.URL) *Client {
 	}
 	client := &http.Client{
 		Transport: transport,
+		// Add a timeout to abort a slow connection (if the site is still streaming us stuff for example)
 		Timeout:   time.Duration(time.Second * 60),
 	}
 	c := &Client{

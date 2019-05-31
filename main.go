@@ -44,11 +44,15 @@ func main() {
 		results        = []*page{}
 
 		// Communication Channels
-		filterCandidates = make(chan *url.URL, 4 * *cmdPoolSize) // buffered to 4 times the number of in flight workers
 		filteredLinks    = make(chan *url.URL)
 		discardedLinks   = make(chan *url.URL)
 		candidateURLS    = make(chan *url.URL, 1) // We buffer this so we can inject the start URL
 		fetchResults     = make(chan *page)
+
+		// filterCandidates are the links returned by workers.
+		// buffered to 4 times the number of max in-flight workers to try and balance channel size vs
+		// goroutines - if we fill the buffer we spawn goroutines to write the values eventually.
+		filterCandidates = make(chan *url.URL, 4 * *cmdPoolSize)
 
 		// linkFilter is in charge of filtering out potential bad links or ones we've visited before
 		linkFilter = filter.NewFilter(initialURL, filterCandidates,
@@ -64,7 +68,7 @@ func main() {
 	candidateURLS <- initialURL
 
 
-	log.Println("Starting Event Loop")
+	log.Println("Starting Event Loop...")
 	for {
 		select {
 
@@ -125,7 +129,7 @@ func main() {
 EXIT:
 	debugReport()
 	log.Println()
-	log.Println("Finished")
+	log.Println("Finished Collection")
 	linkFilter.Stop()
 	fmt.Println(generateGraph(results))
 }
