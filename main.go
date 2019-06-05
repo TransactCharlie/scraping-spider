@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/transactcharlie/scraping-spider/filter"
-	"github.com/transactcharlie/scraping-spider/pool"
 	"github.com/transactcharlie/scraping-spider/httpclient"
+	"github.com/transactcharlie/scraping-spider/pool"
 	logging "log"
 	"net/url"
 	"os"
@@ -21,8 +21,8 @@ var (
 	urlsToProcess = 0
 
 	// Counters for statistics
-	fetchedPages = 0
-	linksSeen = 0
+	fetchedPages   = 0
+	linksSeen      = 0
 	linksDiscarded = 0
 
 	// Debug report ticker
@@ -30,7 +30,7 @@ var (
 )
 
 func debugReport() {
-	fmt.Fprintf(os.Stderr, "\r Fetched:%d  Discarded:%d  LinksSeen:%d", fetchedPages, linksDiscarded, linksSeen)
+	fmt.Fprintf(os.Stderr, "\r Fetched:%d  Binned:%d  Seen:%d", fetchedPages, linksDiscarded, linksSeen)
 }
 
 func main() {
@@ -41,24 +41,23 @@ func main() {
 		initialURL, _  = url.Parse(*cmdURL)
 		httpClient     = httpclient.NewClient(initialURL)
 		connectionPool = pool.NewPool(*cmdPoolSize)
-		results        = []*page{}
+		results        []*page
 
 		// Communication Channels
-		filteredLinks    = make(chan *url.URL)
-		discardedLinks   = make(chan *url.URL)
-		candidateURLS    = make(chan *url.URL, 1) // We buffer this so we can inject the start URL
-		fetchResults     = make(chan *page)
+		filteredLinks  = make(chan *url.URL)
+		discardedLinks = make(chan *url.URL)
+		fetchResults   = make(chan *page)
+
+		// We buffer this so we can inject the start URL
+		candidateURLS = make(chan *url.URL, 1)
 
 		// filterCandidates are the links returned by workers.
 		// buffered to 4 times the number of max in-flight workers to try and balance channel size vs
 		// goroutines - if we fill the buffer we spawn goroutines to write the values eventually.
-		filterCandidates = make(chan *url.URL, 4 * *cmdPoolSize)
+		filterCandidates = make(chan *url.URL, *cmdPoolSize*10)
 
 		// linkFilter is in charge of filtering out potential bad links or ones we've visited before
-		linkFilter = filter.NewFilter(initialURL, filterCandidates,
-			discardedLinks, filteredLinks)
-
-
+		linkFilter = filter.NewFilter(initialURL, filterCandidates, discardedLinks, filteredLinks)
 	)
 
 	// Filter
@@ -66,7 +65,6 @@ func main() {
 
 	// Initial Fetch
 	candidateURLS <- initialURL
-
 
 	log.Println("Starting Event Loop...")
 	for {
@@ -93,7 +91,6 @@ func main() {
 
 		// Filter discarded a candidate URL
 		case _ = <-discardedLinks:
-			// fmt.Fprintf(os.Stderr, "D")
 			urlsToProcess--
 			linksDiscarded++
 			if urlsToProcess == 0 && fetchers == 0 {
@@ -112,17 +109,17 @@ func main() {
 			// explosion of links we'd eventually have to either just fail and run out of memory or drop
 			// messages.
 			select {
-				case filterCandidates <- r:
-				default:
-					// we weren't able to write to filterCandidates.
-					// lets schedule a function to do it when it can...
-					go func(candidate *url.URL) {
-						filterCandidates <- candidate
-					}(r)
+			case filterCandidates <- r:
+			default:
+				// we weren't able to write to filterCandidates.
+				// lets schedule a function to do it when we can...
+				go func(candidate *url.URL) {
+					filterCandidates <- candidate
+				}(r)
 			}
 
 		// Debug Report ticker
-		case <- ticker:
+		case <-ticker:
 			debugReport()
 		}
 	}

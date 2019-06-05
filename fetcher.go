@@ -1,9 +1,9 @@
 package main
 
 import (
+	"github.com/transactcharlie/scraping-spider/httpclient"
 	"golang.org/x/net/html"
 	"net/url"
-	"github.com/transactcharlie/scraping-spider/httpclient"
 	"strings"
 )
 
