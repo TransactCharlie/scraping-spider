@@ -26,7 +26,7 @@ func (c *Client) handleRedirects(req *http.Request, via []*http.Request) error {
 }
 
 // Initialises a new client with a base URL
-func NewClient(initialURL *url.URL) *Client {
+func NewClient(initialURL *url.URL, timeout time.Duration) *Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -41,7 +41,7 @@ func NewClient(initialURL *url.URL) *Client {
 	client := &http.Client{
 		Transport: transport,
 		// Add a timeout to abort a slow connection (if the site is still streaming us stuff for example)
-		Timeout: time.Duration(time.Second * 60),
+		Timeout: time.Duration(timeout),
 	}
 	c := &Client{
 		httpClient:   client,

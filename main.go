@@ -15,6 +15,7 @@ import (
 var (
 	cmdURL      = flag.String("U", "https://monzo.com", "Initial URL")
 	cmdPoolSize = flag.Int("C", 25, "Max number of concurrent fetches")
+	httpTimeout = flag.Duration("T", time.Second*10, "Timeout for http gets")
 
 	// Counters to keep track of in-flight workers and urls
 	fetchers      = 0
@@ -39,7 +40,7 @@ func main() {
 
 	var (
 		initialURL, _  = url.Parse(*cmdURL)
-		httpClient     = httpclient.NewClient(initialURL)
+		httpClient     = httpclient.NewClient(initialURL, *httpTimeout)
 		connectionPool = pool.NewPool(*cmdPoolSize)
 		results        []*page
 
