@@ -3,20 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/transactcharlie/scraping-spider/filter"
-	"github.com/transactcharlie/scraping-spider/httpclient"
-	"github.com/transactcharlie/scraping-spider/pool"
 	logging "log"
 	"net/url"
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/transactcharlie/scraping-spider/filter"
+	"github.com/transactcharlie/scraping-spider/httpclient"
+	"github.com/transactcharlie/scraping-spider/pool"
 )
 
 var (
-	cmdURL      = flag.String("U", "https://monzo.com", "Initial URL")
-	cmdPoolSize = flag.Int("C", 25, "Max number of concurrent fetches")
-	httpTimeout = flag.Duration("T", time.Second*10, "Timeout for http gets")
+	cmdURL         = flag.String("U", "https://monzo.com", "Initial URL")
+	cmdPoolSize    = flag.Int("C", 25, "Max number of concurrent fetches")
+	httpTimeout    = flag.Duration("T", time.Second*10, "Timeout for http gets")
 	excludePattern = flag.String("X", "(/blog/|/cdn-cgi).*", "Exclude pattern <REGEX>")
 
 	// Counters to keep track of in-flight workers and urls
@@ -42,7 +43,7 @@ func main() {
 
 	var (
 		// Results
-		results        []*page
+		results []*page
 
 		initialURL, _  = url.Parse(*cmdURL)
 		httpClient     = httpclient.NewClient(initialURL, *httpTimeout)
@@ -74,6 +75,7 @@ func main() {
 	candidateURLS <- initialURL
 
 	log.Println("Starting Event Loop...")
+EventLoop:
 	for {
 		select {
 
@@ -92,16 +94,18 @@ func main() {
 			fetchers--
 			fetchedPages++
 			results = append(results, p)
+			// We might have finished the task...
 			if fetchers == 0 && urlsToProcess == 0 {
-				goto EXIT
+				break EventLoop
 			}
 
 		// Filter discarded a candidate URL
 		case _ = <-discardedLinks:
 			urlsToProcess--
 			linksDiscarded++
+			// We might have finished the task...
 			if urlsToProcess == 0 && fetchers == 0 {
-				goto EXIT
+				break EventLoop
 			}
 
 		// Fetcher emitted a candidate URL
@@ -130,8 +134,11 @@ func main() {
 			debugReport()
 		}
 	}
-EXIT:
+	// Event Loop End
+
+	// Print a final debugReport() to make sure the counts are correct.
 	debugReport()
+
 	log.Println()
 	log.Println("Finished Collection")
 	linkFilter.Stop()
