@@ -9,6 +9,7 @@ import (
 	logging "log"
 	"net/url"
 	"os"
+	"regexp"
 	"time"
 )
 
@@ -16,6 +17,7 @@ var (
 	cmdURL      = flag.String("U", "https://monzo.com", "Initial URL")
 	cmdPoolSize = flag.Int("C", 25, "Max number of concurrent fetches")
 	httpTimeout = flag.Duration("T", time.Second*10, "Timeout for http gets")
+	excludePattern = flag.String("X", "(/blog/|/cdn-cgi).*", "Exclude pattern <REGEX>")
 
 	// Counters to keep track of in-flight workers and urls
 	fetchers      = 0
@@ -39,10 +41,13 @@ func main() {
 	flag.Parse()
 
 	var (
+		// Results
+		results        []*page
+
 		initialURL, _  = url.Parse(*cmdURL)
 		httpClient     = httpclient.NewClient(initialURL, *httpTimeout)
 		connectionPool = pool.NewPool(*cmdPoolSize)
-		results        []*page
+		filterRegex    = regexp.MustCompile(*excludePattern)
 
 		// Communication Channels
 		filteredLinks  = make(chan *url.URL)
@@ -58,7 +63,8 @@ func main() {
 		filterCandidates = make(chan *url.URL, *cmdPoolSize*10)
 
 		// linkFilter is in charge of filtering out potential bad links or ones we've visited before
-		linkFilter = filter.NewFilter(initialURL, filterCandidates, discardedLinks, filteredLinks)
+		linkFilter = filter.NewFilter(
+			initialURL, filterCandidates, discardedLinks, filteredLinks, filterRegex)
 	)
 
 	// Filter
